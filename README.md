@@ -23,13 +23,14 @@ A `.skill` file is a zip archive containing a `SKILL.md` and optional supporting
 - **New File / New Folder** — toolbar buttons always create at the package root; right-click a folder in the tree to create inside it
 - **Rename** — right-click any file or folder
 - **Delete** — right-click with a confirmation prompt
-- **Drag and drop** — move files and folders within the package by dragging them in the tree
+- **Drag and drop** — move files and folders within the package by dragging in the tree; drop files from the VS Code Explorer or Finder/File Manager directly into any folder
 - **Copy relative path** — right-click any item to copy its path within the package
 - **Reveal in Finder / Explorer / File Manager** — right-click to open the file's location in the OS
 
 **Safe and clean**
 - All archive updates are written atomically — the `.skill` file is never left in a partial state
 - Rapid saves are debounced so auto-save doesn't trigger a full repack on every keystroke
+- OS metadata junk (`.DS_Store`, `Thumbs.db`, `__MACOSX`, etc.) is stripped automatically on open and excluded from every repack
 - Extracted files live in a temporary directory that is cleaned up when VS Code closes
 - Your workspace folders are never modified
 

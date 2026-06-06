@@ -2,7 +2,7 @@
   "name": "skill-studio",
   "displayName": "Skill Studio",
   "description": "Open, browse, and edit Agent Skill (.skill) packages directly in VS Code — edits save straight back into the package.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "uparogya",
   "license": "MIT",
   "pricing": "Free",
