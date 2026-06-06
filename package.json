@@ -1,0 +1,244 @@
+{
+  "name": "skill-studio",
+  "displayName": "Skill Studio",
+  "description": "Open, browse, and edit Agent Skill (.skill) packages directly in VS Code — edits save straight back into the package.",
+  "version": "0.0.1",
+  "publisher": "uparogya",
+  "license": "MIT",
+  "pricing": "Free",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "agent skills",
+    "skill",
+    "SKILL.md",
+    "claude",
+    "ai agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uparogya/vscode-skill-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/uparogya/vscode-skill-studio/issues"
+  },
+  "homepage": "https://github.com/uparogya/vscode-skill-studio#readme",
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "skillStudio.editor",
+        "displayName": "Skill Studio",
+        "selector": [
+          {
+            "filenamePattern": "*.skill"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "skillStudio",
+          "title": "Skill Studio",
+          "icon": "media/skill-studio.svg"
+        }
+      ]
+    },
+    "views": {
+      "skillStudio": [
+        {
+          "id": "skillStudio.contents",
+          "name": "Skill Package",
+          "icon": "media/skill-studio.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "skillStudio.open",
+        "title": "Open Skill Package",
+        "category": "Skill Studio"
+      },
+      {
+        "command": "skillStudio.newSkill",
+        "title": "New Skill Package",
+        "category": "Skill Studio"
+      },
+      {
+        "command": "skillStudio.newFileAtRoot",
+        "title": "New File",
+        "category": "Skill Studio",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "skillStudio.newFolderAtRoot",
+        "title": "New Folder",
+        "category": "Skill Studio",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "skillStudio.newFile",
+        "title": "New File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "skillStudio.newFolder",
+        "title": "New Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "skillStudio.renameNode",
+        "title": "Rename",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "skillStudio.deleteNode",
+        "title": "Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "skillStudio.copyPath",
+        "title": "Copy Path"
+      },
+      {
+        "command": "skillStudio.revealInFinder",
+        "title": "Reveal in Finder"
+      },
+      {
+        "command": "skillStudio.revealInExplorer",
+        "title": "Reveal in Explorer"
+      },
+      {
+        "command": "skillStudio.revealInFileManager",
+        "title": "Reveal in File Manager"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "skillStudio.newFile",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.newFolder",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.renameNode",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.deleteNode",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.revealInFinder",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.revealInExplorer",
+          "when": "false"
+        },
+        {
+          "command": "skillStudio.revealInFileManager",
+          "when": "false"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "skillStudio.open",
+          "when": "resourceExtname == .skill",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillStudio.newSkill",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "skillStudio.newFileAtRoot",
+          "when": "view == skillStudio.contents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skillStudio.newFolderAtRoot",
+          "when": "view == skillStudio.contents",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "skillStudio.newFile",
+          "when": "view == skillStudio.contents && viewItem == dir",
+          "group": "1_new@1"
+        },
+        {
+          "command": "skillStudio.newFolder",
+          "when": "view == skillStudio.contents && viewItem == dir",
+          "group": "1_new@2"
+        },
+        {
+          "command": "skillStudio.renameNode",
+          "when": "view == skillStudio.contents",
+          "group": "2_rename@1"
+        },
+        {
+          "command": "skillStudio.copyPath",
+          "when": "view == skillStudio.contents",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "skillStudio.revealInFinder",
+          "when": "view == skillStudio.contents && isMac",
+          "group": "5_copy@2"
+        },
+        {
+          "command": "skillStudio.revealInExplorer",
+          "when": "view == skillStudio.contents && isWindows",
+          "group": "5_copy@2"
+        },
+        {
+          "command": "skillStudio.revealInFileManager",
+          "when": "view == skillStudio.contents && isLinux",
+          "group": "5_copy@2"
+        },
+        {
+          "command": "skillStudio.deleteNode",
+          "when": "view == skillStudio.contents",
+          "group": "9_delete@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.4.0"
+  }
+}

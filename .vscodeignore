@@ -1,0 +1,14 @@
+.vscode/
+src/
+node_modules/
+out/**/*.map
+.gitignore
+.vscodeignore
+tsconfig.json
+*.vsix
+.DS_Store
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+.github/
+.nyc_output/
+.vscode-test/
