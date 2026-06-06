@@ -5,6 +5,7 @@ out/**/*.map
 .gitignore
 .vscodeignore
 tsconfig.json
+package-lock.json
 *.vsix
 .DS_Store
 CONTRIBUTING.md

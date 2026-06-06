@@ -11,6 +11,11 @@ const execFile = util.promisify(child_process.execFile);
 const TMP_PREFIX = 'skillstudio-';
 const DND_MIME = 'application/vnd.code.tree.skillStudio.contents';
 
+// Files and directories that are never shown in the tree and are stripped from
+// the archive on every repack. Prevents macOS/Windows metadata from leaking in.
+const JUNK_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+const JUNK_DIRS = new Set(['__MACOSX']);
+
 interface Mount {
   skillPath: string;
   extractDir: string;
@@ -103,6 +108,8 @@ async function performMount(skillPath: string): Promise<Mount> {
   const extractDir = rootEntry ? path.join(tmpDir, rootEntry) : tmpDir;
   const flatArchive = extractDir === tmpDir;
 
+  purgeJunk(extractDir);
+
   const mount: Mount = { skillPath, extractDir, tmpDir, flatArchive };
   mounts.set(skillPath, mount);
   return mount;
@@ -132,9 +139,13 @@ async function doRepack(mount: Mount): Promise<void> {
   // Build a fresh archive so deleted entries are not preserved.
   // Flat archives zip from inside the dir so entries sit at the root, not under
   // the randomly-named tmpDir folder name.
+  const junkExclusions = [
+    ...Array.from(JUNK_FILES).flatMap(f => ['-x', `*/${f}`]),
+    ...Array.from(JUNK_DIRS).flatMap(d => ['-x', `*/${d}/*`]),
+  ];
   const zipArgs = mount.flatArchive
-    ? ['-r', tmpZip, '.', '--quiet']
-    : ['-r', tmpZip, path.basename(mount.extractDir), '--quiet'];
+    ? ['-r', tmpZip, '.', '--quiet', ...junkExclusions]
+    : ['-r', tmpZip, path.basename(mount.extractDir), '--quiet', ...junkExclusions];
   const zipCwd = mount.flatArchive ? mount.extractDir : mount.tmpDir;
 
   try {
@@ -162,12 +173,30 @@ function scheduleRepack(mount: Mount): void {
   );
 }
 
-function buildTreeNodes(dir: string): TreeNode[] {
-  const entries = fs.readdirSync(dir).map((name) => {
+function isJunk(name: string, isDir: boolean): boolean {
+  return isDir ? JUNK_DIRS.has(name) : JUNK_FILES.has(name);
+}
+
+function purgeJunk(dir: string): void {
+  for (const name of fs.readdirSync(dir)) {
     const fsPath = path.join(dir, name);
     const isDir = fs.statSync(fsPath).isDirectory();
-    return { name, fsPath, isDir };
-  });
+    if (isJunk(name, isDir)) {
+      fs.rmSync(fsPath, { recursive: true, force: true });
+    } else if (isDir) {
+      purgeJunk(fsPath);
+    }
+  }
+}
+
+function buildTreeNodes(dir: string): TreeNode[] {
+  const entries = fs.readdirSync(dir)
+    .map((name) => {
+      const fsPath = path.join(dir, name);
+      const isDir = fs.statSync(fsPath).isDirectory();
+      return { name, fsPath, isDir };
+    })
+    .filter(({ name, isDir }) => !isJunk(name, isDir));
 
   entries.sort((a, b) => {
     if (a.isDir !== b.isDir) { return a.isDir ? -1 : 1; }
@@ -230,7 +259,7 @@ class SkillTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 }
 
 class SkillDragAndDropController implements vscode.TreeDragAndDropController<TreeNode> {
-  readonly dropMimeTypes = [DND_MIME];
+  readonly dropMimeTypes = [DND_MIME, 'text/uri-list'];
   readonly dragMimeTypes = [DND_MIME];
 
   handleDrag(source: readonly TreeNode[], dataTransfer: vscode.DataTransfer): void {
@@ -241,38 +270,71 @@ class SkillDragAndDropController implements vscode.TreeDragAndDropController<Tre
     const mount = treeProvider.currentMount;
     if (!mount) { return; }
 
-    const item = dataTransfer.get(DND_MIME);
-    if (!item) { return; }
-
-    const sources: TreeNode[] = item.value;
     const destDir = target?.isDir ? target.fsPath : mount.extractDir;
+    let changed = false;
 
-    let moved = false;
-    for (const source of sources) {
-      if (
-        destDir === source.fsPath ||
-        destDir.startsWith(source.fsPath + path.sep) ||
-        path.dirname(source.fsPath) === destDir
-      ) {
-        continue;
+    // Internal tree move
+    const internal = dataTransfer.get(DND_MIME);
+    if (internal) {
+      const sources: TreeNode[] = internal.value;
+      for (const source of sources) {
+        if (
+          destDir === source.fsPath ||
+          destDir.startsWith(source.fsPath + path.sep) ||
+          path.dirname(source.fsPath) === destDir
+        ) {
+          continue;
+        }
+
+        const destPath = path.join(destDir, path.basename(source.fsPath));
+        if (fs.existsSync(destPath)) {
+          const choice = await vscode.window.showWarningMessage(
+            `"${path.basename(source.fsPath)}" already exists here. Replace?`,
+            { modal: true },
+            'Replace'
+          );
+          if (choice !== 'Replace') { continue; }
+          fs.rmSync(destPath, { recursive: true, force: true });
+        }
+
+        fs.renameSync(source.fsPath, destPath);
+        changed = true;
       }
-
-      const destPath = path.join(destDir, path.basename(source.fsPath));
-      if (fs.existsSync(destPath)) {
-        const choice = await vscode.window.showWarningMessage(
-          `"${path.basename(source.fsPath)}" already exists here. Replace?`,
-          { modal: true },
-          'Replace'
-        );
-        if (choice !== 'Replace') { continue; }
-        fs.rmSync(destPath, { recursive: true, force: true });
-      }
-
-      fs.renameSync(source.fsPath, destPath);
-      moved = true;
     }
 
-    if (moved) {
+    // External file drop from VS Code Explorer or OS file manager
+    const external = dataTransfer.get('text/uri-list');
+    if (external) {
+      const uris = (await external.asString())
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'))
+        .map(l => vscode.Uri.parse(l));
+
+      for (const uri of uris) {
+        if (uri.scheme !== 'file') { continue; }
+        const srcPath = uri.fsPath;
+        if (srcPath.startsWith(mount.extractDir + path.sep)) { continue; }
+
+        const name = path.basename(srcPath);
+        const destPath = path.join(destDir, name);
+
+        if (fs.existsSync(destPath)) {
+          const choice = await vscode.window.showWarningMessage(
+            `"${name}" already exists here. Replace?`,
+            { modal: true },
+            'Replace'
+          );
+          if (choice !== 'Replace') { continue; }
+          fs.rmSync(destPath, { recursive: true, force: true });
+        }
+
+        fs.cpSync(srcPath, destPath, { recursive: true });
+        changed = true;
+      }
+    }
+
+    if (changed) {
       treeProvider.refresh();
       await repackSkill(mount);
     }

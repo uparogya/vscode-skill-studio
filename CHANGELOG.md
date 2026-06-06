@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2] - 2026-06-06
+
+### Added
+
+- Drag and drop files from VS Code Explorer or Finder / File Manager directly into any folder inside the package tree.
+- OS metadata junk (`.DS_Store`, `Thumbs.db`, `desktop.ini`, `__MACOSX`) is stripped automatically when a package is opened and excluded from every repack.
+
 ## [0.0.1] - 2026-06-06
 
 ### Added
