@@ -184,6 +184,12 @@
           "group": "navigation@2"
         }
       ],
+      "view/welcome": [
+        {
+          "view": "skillStudio.contents",
+          "contents": "No skill package is open.\n\nOpen or create a .skill file to get started."
+        }
+      ],
       "view/item/context": [
         {
           "command": "skillStudio.newFile",
