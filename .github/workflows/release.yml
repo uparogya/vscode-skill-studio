@@ -63,5 +63,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to VS Code Marketplace
-        if: steps.tag_check.outputs.exists == 'false' && secrets.VSCE_PAT != ''
-        run: npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            npx vsce publish --pat "$VSCE_PAT"
+          else
+            echo "VSCE_PAT not set — skipping Marketplace publish."
+          fi
