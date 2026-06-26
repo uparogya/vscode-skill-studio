@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.3] - 2026-06-26
+
+### Fixed
+
+- Removed the runtime dependency on system `zip` and `unzip` commands so opening and saving `.skill` packages works across platforms without extra PATH setup.
+- Improved package root detection so macOS metadata folders such as `__MACOSX` are not mistaken for skill contents.
+- Preserved automatic `SKILL.md` creation when opening a newly created zero-byte `.skill` file.
+
 ## [0.0.2] - 2026-06-06
 
 ### Added
