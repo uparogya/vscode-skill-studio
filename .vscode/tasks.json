@@ -11,9 +11,15 @@
     {
       "type": "npm",
       "script": "watch",
-      "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "label": "npm: watch"
+    },
+    {
+      "type": "npm",
+      "script": "watch:check",
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true,
+      "label": "npm: watch:check"
     }
   ]
 }

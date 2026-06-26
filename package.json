@@ -1,8 +1,8 @@
 {
   "name": "skill-studio",
   "displayName": "Skill Studio",
-  "description": "Open, browse, and edit Agent Skill (.skill) packages directly in VS Code — edits save straight back into the package.",
-  "version": "0.0.2",
+  "description": "Open, browse, edit, and repackage Agent Skill (.skill) packages directly in VS Code.",
+  "version": "0.0.3",
   "publisher": "uparogya",
   "license": "MIT",
   "pricing": "Free",
@@ -235,16 +235,25 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run package:extension",
+    "compile": "npm run check && npm run bundle",
+    "check": "tsc -p ./ --noEmit",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js --sourcemap --sources-content=false",
+    "package:extension": "npm run check && esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js --minify",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js --sourcemap --sources-content=false --watch",
+    "watch:check": "tsc -p ./ --noEmit --watch",
     "package": "vsce package",
     "publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
-    "@types/vscode": "^1.90.0",
-    "@vscode/vsce": "^2.24.0",
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "yauzl": "^2.10.0",
+    "yazl": "^2.5.1"
   }
 }

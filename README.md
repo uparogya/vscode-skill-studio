@@ -1,6 +1,6 @@
 # Skill Studio
 
-Open, browse, and edit **Agent Skill packages** (`.skill` files) directly in VS Code — no manual unzipping or rezipping.
+Open, browse, edit, and repackage **Agent Skill packages** (`.skill` files) directly in VS Code — no manual unzipping or rezipping.
 
 A `.skill` file is a zip archive containing a `SKILL.md` and optional supporting files (references, assets, scripts, etc.). Skill Studio lets you treat it like a regular folder.
 
@@ -29,6 +29,7 @@ A `.skill` file is a zip archive containing a `SKILL.md` and optional supporting
 
 **Safe and clean**
 - All archive updates are written atomically — the `.skill` file is never left in a partial state
+- Archive handling is built into the extension across macOS, Windows, and Linux — no system `zip` or `unzip` tools are required
 - Rapid saves are debounced so auto-save doesn't trigger a full repack on every keystroke
 - OS metadata junk (`.DS_Store`, `Thumbs.db`, `__MACOSX`, etc.) is stripped automatically on open and excluded from every repack
 - Extracted files live in a temporary directory that is cleaned up when VS Code closes
@@ -49,9 +50,6 @@ To create a new package, open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P
 ## Requirements
 
 - VS Code `1.90.0` or newer
-- `unzip` and `zip` must be on your `PATH`
-  - macOS and most Linux distributions include both by default
-  - Windows: install via [Git for Windows](https://gitforwindows.org/) or use WSL
 
 ---
 

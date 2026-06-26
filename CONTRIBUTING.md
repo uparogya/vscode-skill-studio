@@ -5,7 +5,6 @@ Thank you for your interest in Skill Studio. Contributions are welcome.
 ## Requirements
 
 - Node.js 20+
-- `unzip` and `zip` on your `PATH` (ships with macOS and most Linux distros)
 
 ## Setup
 

@@ -2,17 +2,15 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as child_process from 'child_process';
-import * as util from 'util';
+import * as stream from 'stream';
+import * as yauzl from 'yauzl';
+import * as yazl from 'yazl';
 
-// execFile passes arguments as an array — never interpolated into a shell string.
-const execFile = util.promisify(child_process.execFile);
+const pipeline = stream.promises.pipeline;
 
 const TMP_PREFIX = 'skillstudio-';
 const DND_MIME = 'application/vnd.code.tree.skillStudio.contents';
 
-// Files and directories that are never shown in the tree and are stripped from
-// the archive on every repack. Prevents macOS/Windows metadata from leaking in.
 const JUNK_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 const JUNK_DIRS = new Set(['__MACOSX']);
 
@@ -73,7 +71,7 @@ async function initializeSkillPackage(skillPath: string): Promise<void> {
       '',
     ].join('\n');
     await fs.promises.writeFile(path.join(packageDir, 'SKILL.md'), template);
-    await execFile('zip', ['-r', tmpZip, skillName, '--quiet'], { cwd: tmpDir });
+    await createZipFromDirectory(tmpDir, tmpZip, skillName);
     fs.renameSync(tmpZip, skillPath);
   } catch (err) {
     if (fs.existsSync(tmpZip)) { try { fs.rmSync(tmpZip); } catch { /* best effort */ } }
@@ -88,8 +86,6 @@ async function performMount(skillPath: string): Promise<Mount> {
     throw new Error(`File not found: ${skillPath}`);
   }
 
-  // A zero-byte file was just created (e.g. Explorer "New File"). Seed it with
-  // a valid package so it opens without error instead of failing unzip.
   const stat = await fs.promises.stat(skillPath);
   if (stat.size === 0) {
     await initializeSkillPackage(skillPath);
@@ -97,15 +93,19 @@ async function performMount(skillPath: string): Promise<Mount> {
 
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), TMP_PREFIX));
   try {
-    await execFile('unzip', ['-o', skillPath, '-d', tmpDir]);
+    await extractZip(skillPath, tmpDir);
   } catch (err) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     throw err;
   }
 
-  const entries = await fs.promises.readdir(tmpDir);
-  const rootEntry = entries.find((e) => fs.statSync(path.join(tmpDir, e)).isDirectory());
-  const extractDir = rootEntry ? path.join(tmpDir, rootEntry) : tmpDir;
+  purgeJunk(tmpDir);
+
+  const extractDir = await findPackageRoot(tmpDir);
+  if (!extractDir) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error('Invalid .skill package: missing SKILL.md');
+  }
   const flatArchive = extractDir === tmpDir;
 
   purgeJunk(extractDir);
@@ -136,27 +136,189 @@ async function doRepack(mount: Mount): Promise<void> {
 
   const tmpZip = mount.skillPath + '.tmp';
 
-  // Build a fresh archive so deleted entries are not preserved.
-  // Flat archives zip from inside the dir so entries sit at the root, not under
-  // the randomly-named tmpDir folder name.
-  const junkExclusions = [
-    ...Array.from(JUNK_FILES).flatMap(f => ['-x', `*/${f}`]),
-    ...Array.from(JUNK_DIRS).flatMap(d => ['-x', `*/${d}/*`]),
-  ];
-  const zipArgs = mount.flatArchive
-    ? ['-r', tmpZip, '.', '--quiet', ...junkExclusions]
-    : ['-r', tmpZip, path.basename(mount.extractDir), '--quiet', ...junkExclusions];
+  const rootEntry = mount.flatArchive
+    ? '.'
+    : path.relative(mount.tmpDir, mount.extractDir).split(path.sep).join(path.posix.sep);
   const zipCwd = mount.flatArchive ? mount.extractDir : mount.tmpDir;
 
   try {
     if (fs.existsSync(tmpZip)) { fs.rmSync(tmpZip); }
-    await execFile('zip', zipArgs, { cwd: zipCwd });
+    await createZipFromDirectory(zipCwd, tmpZip, rootEntry);
     fs.renameSync(tmpZip, mount.skillPath);
     vscode.window.setStatusBarMessage(`Saved → ${path.basename(mount.skillPath)}`, 2500);
   } catch (err) {
     if (fs.existsSync(tmpZip)) { fs.rmSync(tmpZip); }
     vscode.window.showErrorMessage(`Skill Studio: save failed — ${String(err)}`);
   }
+}
+
+async function extractZip(zipPath: string, destDir: string): Promise<void> {
+  const zipFile = await openZip(zipPath);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      zipFile.once('end', resolve);
+      zipFile.once('error', reject);
+
+      zipFile.on('entry', (entry) => {
+        void (async () => {
+          try {
+            const destPath = safeArchivePath(destDir, entry.fileName);
+            if (entry.fileName.endsWith('/')) {
+              await fs.promises.mkdir(destPath, { recursive: true });
+              zipFile.readEntry();
+              return;
+            }
+
+            await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+            const readStream = await openReadStream(zipFile, entry);
+            await pipeline(readStream, fs.createWriteStream(destPath));
+            zipFile.readEntry();
+          } catch (err) {
+            reject(err);
+          }
+        })();
+      });
+
+      zipFile.readEntry();
+    });
+  } finally {
+    zipFile.close();
+  }
+}
+
+function openZip(zipPath: string): Promise<yauzl.ZipFile> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipFile) => {
+      if (err) {
+        reject(err);
+      } else if (!zipFile) {
+        reject(new Error('Could not open zip file.'));
+      } else {
+        resolve(zipFile);
+      }
+    });
+  });
+}
+
+function openReadStream(zipFile: yauzl.ZipFile, entry: yauzl.Entry): Promise<NodeJS.ReadableStream> {
+  return new Promise((resolve, reject) => {
+    zipFile.openReadStream(entry, (err, readStream) => {
+      if (err) {
+        reject(err);
+      } else if (!readStream) {
+        reject(new Error(`Could not read archive entry: ${entry.fileName}`));
+      } else {
+        resolve(readStream);
+      }
+    });
+  });
+}
+
+function safeArchivePath(rootDir: string, archivePath: string): string {
+  const normalizedArchivePath = archivePath.replace(/\\/g, '/');
+  const destPath = path.resolve(rootDir, normalizedArchivePath);
+  const relative = path.relative(rootDir, destPath);
+  // Reject zip-slip entries before writing anything outside the temp mount.
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    return destPath;
+  }
+  throw new Error(`Unsafe archive entry path: ${archivePath}`);
+}
+
+async function createZipFromDirectory(sourceDir: string, zipPath: string, rootEntry: string): Promise<void> {
+  const zipFile = new yazl.ZipFile();
+  const output = fs.createWriteStream(zipPath);
+  const done = new Promise<void>((resolve, reject) => {
+    output.on('close', resolve);
+    output.on('error', reject);
+    zipFile.outputStream.on('error', reject);
+  });
+
+  zipFile.outputStream.pipe(output);
+  if (rootEntry === '.') {
+    addDirectoryToZip(zipFile, sourceDir, '.');
+  } else {
+    addPathToZip(zipFile, path.join(sourceDir, rootEntry), rootEntry);
+  }
+  zipFile.end();
+  await done;
+}
+
+function addPathToZip(zipFile: yazl.ZipFile, fsPath: string, metadataPath: string): void {
+  const stat = fs.statSync(fsPath);
+  const name = path.basename(fsPath);
+  if (isJunk(name, stat.isDirectory())) {
+    return;
+  }
+
+  if (stat.isDirectory()) {
+    const children = fs.readdirSync(fsPath).filter((child) => {
+      const childPath = path.join(fsPath, child);
+      return !isJunk(child, fs.statSync(childPath).isDirectory());
+    });
+    if (children.length === 0) {
+      zipFile.addEmptyDirectory(metadataPath);
+      return;
+    }
+    addDirectoryToZip(zipFile, fsPath, metadataPath);
+    return;
+  }
+
+  zipFile.addFile(fsPath, metadataPath);
+}
+
+function addDirectoryToZip(zipFile: yazl.ZipFile, sourceDir: string, rootEntry: string): void {
+  for (const name of fs.readdirSync(sourceDir)) {
+    const fsPath = path.join(sourceDir, name);
+    const stat = fs.statSync(fsPath);
+    if (isJunk(name, stat.isDirectory())) {
+      continue;
+    }
+
+    const metadataPath = rootEntry === '.'
+      ? name
+      : path.posix.join(rootEntry, name);
+
+    addPathToZip(zipFile, fsPath, metadataPath);
+  }
+}
+
+async function findPackageRoot(tmpDir: string): Promise<string | undefined> {
+  const skillMdPath = findFile(tmpDir, 'SKILL.md');
+  return skillMdPath ? path.dirname(skillMdPath) : undefined;
+}
+
+function findFile(dir: string, fileName: string): string | undefined {
+  const entries = fs.readdirSync(dir)
+    .map((name) => {
+      const fsPath = path.join(dir, name);
+      return { name, fsPath, stat: fs.statSync(fsPath) };
+    })
+    .filter(({ name, stat }) => !isJunk(name, stat.isDirectory()))
+    .sort((a, b) => {
+      if (a.stat.isDirectory() !== b.stat.isDirectory()) {
+        return a.stat.isDirectory() ? 1 : -1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+  for (const entry of entries) {
+    if (entry.stat.isFile() && entry.name === fileName) {
+      return entry.fsPath;
+    }
+  }
+
+  for (const entry of entries) {
+    if (!entry.stat.isDirectory()) {
+      continue;
+    }
+    const found = findFile(entry.fsPath, fileName);
+    if (found) {
+      return found;
+    }
+  }
+
+  return undefined;
 }
 
 const repackDebounce = new Map<string, ReturnType<typeof setTimeout>>();
@@ -538,7 +700,7 @@ export function activate(context: vscode.ExtensionContext): void {
           '',
         ].join('\n');
         await fs.promises.writeFile(path.join(packageDir, 'SKILL.md'), template);
-        await execFile('zip', ['-r', tmpZip, skillName, '--quiet'], { cwd: tmpDir });
+        await createZipFromDirectory(tmpDir, tmpZip, skillName);
         fs.renameSync(tmpZip, saveUri.fsPath);
       } catch (err) {
         if (fs.existsSync(tmpZip)) { try { fs.rmSync(tmpZip); } catch { /* best effort */ } }
